@@ -1,10 +1,8 @@
-
 const Produit = require('../models/produit');
 const User = require('../models/userr');
 const Admin = require('../models/admin');
 const Commande = require('../models/commande');
-const mongoose = require('mongoose');
-const ObjectId = mongoose.Types.ObjectId;
+
 const nodemailer = require('nodemailer'); // Importer nodemailer
 const admin = require('../models/admin');
 
@@ -23,7 +21,7 @@ exports.passCommande = async (req, res) => {
         let total = 0;
         let totalad = 0;
 
-        // Parcourir la liste des produits pour calculer le total et mettre à jour la quantité disponible
+        // Parcourir la liste des produits pour calculer le total etmettre à jour la quantité disponible
         for (const item of produits) {
             // Récupérer les détails du produit depuis la base de données
             const produit = await Produit.findById(item.produit);
@@ -32,17 +30,14 @@ exports.passCommande = async (req, res) => {
             }
 
             if (produit.quantite < item.quantite) {
-                console.log('Quantité insuffisante pour le produit :', produit.name);
+                console.log('Quantité insuffisante pour le produit :',produit.name);
                 return res.status(400).json({ message: `Quantité insuffisante pour le produit ${produit.name}.` });
             }
 
-            
-            // Calculer le total pour ce produit en multipliant la quantité par le prix
+
+            // Calculer le total pour ce produit en multipliant laquantité par le prix
             total += item.quantite * produit.prix;
 
-            // Mettre à jour la quantité disponible du produit en soustrayant la quantité commandée
-            produit.quantite -= item.quantite;
-            await produit.save();
         }
 
         // Appliquer une réduction si le total est supérieur à 100
@@ -71,14 +66,14 @@ exports.passCommande = async (req, res) => {
               pass: 'qumr rooj igto tlaq'
             }
         });
-      
+
         // Envoyer la promotion à chaque utilisateur
         for (const user of users) {
             const mailOptions = {
                 from: 'djebbihaitem9@gmail.com',
                 to: user.email,
                 subject: 'confirmation de commande',
-                text: `votre commande est confirmée, dans 48 heures votre commande sera reçue, le total de votre commande est : ${total}`
+                text: ` Bonjour ${user.name},,votre commande  a été passer avec success, un mail de confirmation sera vous venir `
             };
             await transporter.sendMail(mailOptions);
         }
@@ -140,13 +135,18 @@ exports.getAllCommandes = async (req, res) => {
 
             // Ajouter les détails de la commande dans le tableau
             commandesDetails.push({
+                id: commande._id,
                 user: user.name,
+                prenom:user.prenom,
                 emailUser: user.email,
                 usertel: user.telephone,
                 useraddresse: user.adresse,
-                produitsDetails: produitsDetails, // Ajouter les détails des produits ici
+                produits: produitsDetails,
                 total: commande.total,
-                livree: commande.livree
+                livree: commande.livree,
+                date: commande.date,
+                dateLivraison: commande.dateLivraison,
+                confirmee : commande.confirmed
             });
         }
 
@@ -177,7 +177,8 @@ exports.getcommandebyuser = async (req, res) => {
 
         // Parcourir chaque commande pour récupérer les détails
         for (const commande of commandes) {
-            const produitsDetails = await Promise.all(commande.produits.map(async (produit) => {
+            const produitsDetails = await
+Promise.all(commande.produits.map(async (produit) => {
                 // Récupérer les détails des produits commandés
                 const produitInfo = await Produit.findById(produit.produit);
                 if (!produitInfo) {
@@ -191,10 +192,12 @@ exports.getcommandebyuser = async (req, res) => {
             }));
 
             // Filtrer les produits détaillés (pour ignorer les produits introuvables)
-            const filteredProduitsDetails = produitsDetails.filter(produit => produit !== null);
+            const filteredProduitsDetails =
+produitsDetails.filter(produit => produit !== null);
 
             // Ajouter les détails de la commande dans le tableau
             commandesDetails.push({
+                _id: commande.id,
                 produits: filteredProduitsDetails,
                 quantitec: commande.quantitec,
                 total: commande.total,
@@ -247,20 +250,93 @@ exports.livreCommande = async (req, res) => {
     try {
         const commandeId = req.params.commandeId;
 
-        // Vérifier si la commande existe
         const commande = await Commande.findById(commandeId);
         if (!commande) {
             return res.status(404).json({ message: "Commande introuvable." });
         }
 
-        // Marquer la commande comme livrée et enregistrer la date de livraison
+        for (const item of commande.produits) {
+            const produit = await Produit.findById(item.produit);
+            if (produit) {
+                produit.quantite -= item.quantite;
+                await produit.save();
+            }
+        }
+
         commande.livree = true;
-        commande.dateLivraison = new Date(); // Utiliser la date actuelle comme date de livraison
+        commande.dateLivraison = new Date();
         await commande.save();
 
         res.status(200).json({ message: "Commande marquée comme livrée avec succès." });
     } catch (error) {
         console.error('Erreur lors du marquage de la commande comme livrée :', error);
         res.status(500).json({ message: "Une erreur s'est produite lors du marquage de la commande comme livrée." });
+    }
+};
+
+
+exports.confirmerCommande = async (req, res) => {
+    try {
+        // Récupérer l'ID de la commande et l'action de confirmation depuis les paramètres de la requête
+        const { commandeId, action } = req.params;
+
+        // Vérifier si la commande existe
+        const commande = await Commande.findById(commandeId);
+        if (!commande) {
+            return res.status(404).json({ message: "Commande introuvable." });
+        }
+
+        // Récupérer les détails de l'utilisateur
+        const user = await User.findById(commande.user);
+        if (!user) {
+            return res.status(404).json({ message: "Utilisateur associé à la commande introuvable." });
+        }
+
+        // Configurer le transporteur d'e-mail
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: 'djebbihaitem9@gmail.com',
+                pass: 'qumr rooj igto tlaq'// Utiliser une variable d'environnement pour les informations sensibles
+            }
+        });
+
+        let mailOptions;
+
+        // Mettre à jour l'état de confirmation en fonction de l'action
+        if (action === 'confirmer') {
+            commande.confirmed = true;
+
+            // Définir les options de l'e-mail de confirmation
+            mailOptions = {
+                from: 'djebbihaitem9@gmail.com',
+                to: user.email,
+                subject: 'Confirmation de commande',
+                text: `Bonjour ${user.name}, votre commande est confirmée. Dans 48 heures, votre commande sera reçue. Le total de votre commande est : ${commande.total}.`
+            };
+        } else if (action === 'rejeter') {
+            commande.confirmed = false;
+
+            // Définir les options de l'e-mail de rejet
+            mailOptions = {
+                from: 'djebbihaitem9@gmail.com',
+                to: user.email,
+                subject: 'Commande rejetée',
+                text: `Bonjour ${user.name}, nous sommes désolés de vous informer que votre commande a été rejetée et ne sera pas livrée car nous ne faisons pas la livraison dans votre zone.`
+            };
+        } else {
+            return res.status(400).json({ message: "Action non valide." });
+        }
+
+        // Enregistrer la commande mise à jour
+        await commande.save();
+
+        // Envoyer l'e-mail de notification à l'utilisateur
+        await transporter.sendMail(mailOptions);
+
+        res.status(200).json({ message: `Commande ${action}ée avec succès.` });
+    } catch (error) {
+        console.error('Erreur lors de la confirmation/rejet de la commande :', error);
+        res.status(500).json({ message: "Une erreur s'est produite lors de la confirmation/rejet de la commande." });
     }
 };
