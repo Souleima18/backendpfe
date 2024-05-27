@@ -9,6 +9,7 @@ router.get('/commandes', commandeController.getAllCommandes);
 router.get('/getcommandebyuser/:userId', commandeController.getcommandebyuser);
 
 router.delete('/commandeannuler/:commandeId', commandeController.annulerCommande);
+router.put('/commandes/:commandeId/:action', commandeController.confirmerCommande);
 
 router.put('/livreCommande/:commandeId',commandeController.livreCommande )
 // router.get('/statistiques-commandes', commandeController.afficherStatistiquesHebdomadaires);
